@@ -15,14 +15,20 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
+const xMTADefault = "GoDSN"
+
 type ReportingMTAInfo struct {
 	ReportingMTA    string
 	ReceivedFromMTA string
 
-	// Message sender address, included as 'X-Maddy-Sender: rfc822; ADDR' field.
+	// XMTA if empty it defaults to GoDSN, and is used as MTA implemantation name in
+	// HeaderKey after X- (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
+	XMTA string
+
+	// Message sender address, included as 'X-GoDSN-Sender: rfc822; ADDR' field.
 	XSender string
 
-	// Message identifier, included as 'X-Maddy-MsgId: MSGID' field.
+	// Message identifier, included as 'X-GoDSN-MsgId: MSGID' field.
 	XMessageID string
 
 	// Time when message was enqueued for delivery by Reporting MTA.
@@ -48,6 +54,11 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 
 	h.Add("Reporting-MTA", "dns; "+reportingMTA)
 
+	if info.XMTA == "" {
+		info.XMTA = xMTADefault
+	}
+	xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTA)
+
 	if info.ReceivedFromMTA != "" {
 		receivedFromMTA, err := dnsSelectIDNA(utf8, info.ReceivedFromMTA)
 		if err != nil {
@@ -60,17 +71,17 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 	if info.XSender != "" {
 		sender, err := addrSelectIDNA(utf8, info.XSender)
 		if err != nil {
-			return fmt.Errorf("dsn: cannot convert X-Maddy-Sender to a suitable representation: %w", err)
+			return fmt.Errorf("dsn: cannot convert %s-Sender to a suitable representation: %w", xHeaderPrefix, err)
 		}
 
 		if utf8 {
-			h.Add("X-Maddy-Sender", "utf8; "+sender)
+			h.Add(xHeaderPrefix+"-Sender", "utf8; "+sender)
 		} else {
-			h.Add("X-Maddy-Sender", "rfc822; "+sender)
+			h.Add(xHeaderPrefix+"-Sender", "rfc822; "+sender)
 		}
 	}
 	if info.XMessageID != "" {
-		h.Add("X-Maddy-MsgID", info.XMessageID)
+		h.Add(xHeaderPrefix+"-MsgID", info.XMessageID)
 	}
 
 	if !info.ArrivalDate.IsZero() {
@@ -96,6 +107,9 @@ const (
 type RecipientInfo struct {
 	FinalRecipient string
 	RemoteMTA      string
+	// XMTA if empty it defaults to GoDSN, and is used as MTA implemantation name in
+	// HeaderKey after X- (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
+	XMTA string
 
 	Action Action
 	Status smtp.EnhancedCode
@@ -103,6 +117,8 @@ type RecipientInfo struct {
 	// DiagnosticCode is the error that will be returned to the sender.
 	DiagnosticCode error
 }
+
+var newLineReplacer = strings.NewReplacer("\n", " ", "\r", " ")
 
 func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 	// DSN format uses structure similar to MIME header, so we reuse
@@ -136,15 +152,17 @@ func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 		// But we cannot directly insert CR/LF into Disagnostic-Code so rewrite it.
 		h.Add("Diagnostic-Code", fmt.Sprintf("smtp; %d %d.%d.%d %s",
 			smtpErr.Code, smtpErr.EnhancedCode[0], smtpErr.EnhancedCode[1], smtpErr.EnhancedCode[2],
-			strings.ReplaceAll(strings.ReplaceAll(smtpErr.Message, "\n", " "), "\r", " ")))
+			newLineReplacer.Replace(smtpErr.Message)))
 	} else if utf8 {
 		// It might contain Unicode, so don't include it if we are not allowed to.
 		// ... I didn't bother implementing mangling logic to remove Unicode
 		// characters.
-		errorDesc := info.DiagnosticCode.Error()
-		errorDesc = strings.ReplaceAll(strings.ReplaceAll(errorDesc, "\n", " "), "\r", " ")
-
-		h.Add("Diagnostic-Code", "X-Maddy; "+errorDesc)
+		errorDesc := newLineReplacer.Replace(info.DiagnosticCode.Error())
+		if info.XMTA == "" {
+			info.XMTA = xMTADefault
+		}
+		xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTA)
+		h.Add("Diagnostic-Code", xHeaderPrefix+"; "+errorDesc)
 	}
 
 	if info.RemoteMTA != "" {
@@ -184,7 +202,7 @@ func GenerateDSN(utf8 bool, envelope Envelope, mtaInfo ReportingMTAInfo, rcptsIn
 
 	defer partWriter.Close()
 
-	if err := writeHumanReadablePart(partWriter, envelope, mtaInfo, rcptsInfo); err != nil {
+	if err := writeHumanReadablePart(partWriter, mtaInfo, rcptsInfo); err != nil {
 		return textproto.Header{}, err
 	}
 	if err := writeMachineReadablePart(utf8, partWriter, mtaInfo, rcptsInfo); err != nil {
@@ -251,7 +269,7 @@ Last delivery attempt: {{.LastAttemptDate}}
 
 `))
 
-func writeHumanReadablePart(w *textproto.MultipartWriter, envelope Envelope, mtaInfo ReportingMTAInfo, rcptsInfo []RecipientInfo) error {
+func writeHumanReadablePart(w *textproto.MultipartWriter, mtaInfo ReportingMTAInfo, rcptsInfo []RecipientInfo) error {
 	humanHeader := textproto.Header{}
 	humanHeader.Add("Content-Transfer-Encoding", "8bit")
 	humanHeader.Add("Content-Type", `text/plain; charset="utf-8"`)
