@@ -15,15 +15,15 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
-const xMTADefault = "GoDSN"
+const xMTADefaultName = "GoDSN"
 
 type ReportingMTAInfo struct {
 	ReportingMTA    string
 	ReceivedFromMTA string
 
-	// XMTA if empty it defaults to GoDSN, and is used as MTA name in
+	// XMTAName if empty it defaults to GoDSN, and is used as MTA name in
 	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
-	XMTA string
+	XMTAName string
 
 	// Message sender address, included as 'X-GoDSN-Sender: rfc822; ADDR' field.
 	XSender string
@@ -54,10 +54,10 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 
 	h.Add("Reporting-MTA", "dns; "+reportingMTA)
 
-	if info.XMTA == "" {
-		info.XMTA = xMTADefault
+	if info.XMTAName == "" {
+		info.XMTAName = xMTADefaultName
 	}
-	xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTA)
+	xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTAName)
 
 	if info.ReceivedFromMTA != "" {
 		receivedFromMTA, err := dnsSelectIDNA(utf8, info.ReceivedFromMTA)
@@ -109,9 +109,9 @@ const (
 type RecipientInfo struct {
 	FinalRecipient string
 	RemoteMTA      string
-	// XMTA if empty it defaults to GoDSN, and is used as MTA name in
+	// XMTAName if empty it defaults to GoDSN, and is used as MTA name in
 	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
-	XMTA string
+	XMTAName string
 
 	Action Action
 	Status smtp.EnhancedCode
@@ -160,10 +160,10 @@ func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 		// ... I didn't bother implementing mangling logic to remove Unicode
 		// characters.
 		errorDesc := newLineReplacer.Replace(info.DiagnosticCode.Error())
-		if info.XMTA == "" {
-			info.XMTA = xMTADefault
+		if info.XMTAName == "" {
+			info.XMTAName = xMTADefaultName
 		}
-		xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTA)
+		xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTAName)
 		h.Add("Diagnostic-Code", xHeaderPrefix+"; "+errorDesc)
 	}
 
@@ -255,8 +255,8 @@ func writeMachineReadablePart(utf8 bool, w *textproto.MultipartWriter, mtaInfo R
 	return nil
 }
 
-// failedText is the text of the human-readable part of DSN.
-var failedText = template.Must(template.New("dsn-text").Parse(`
+// FailedTemplateText is the text of the human-readable part of DSN.
+var FailedTemplateText = `
 This is the mail delivery system at {{.ReportingMTA}}.
 
 Unfortunately, your message could not be delivered to one or more
@@ -269,7 +269,10 @@ Message ID: {{.XMessageID}}
 Arrival: {{.ArrivalDate}}
 Last delivery attempt: {{.LastAttemptDate}}
 
-`))
+`
+
+// failedText is the text of the human-readable part of DSN.
+var failedText = template.Must(template.New("dsn-text").Parse(FailedTemplateText))
 
 func writeHumanReadablePart(w *textproto.MultipartWriter, mtaInfo ReportingMTAInfo, rcptsInfo []RecipientInfo) error {
 	humanHeader := textproto.Header{}
