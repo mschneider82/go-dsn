@@ -21,8 +21,8 @@ type ReportingMTAInfo struct {
 	ReportingMTA    string
 	ReceivedFromMTA string
 
-	// XMTA if empty it defaults to GoDSN, and is used as MTA implemantation name in
-	// HeaderKey after X- (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
+	// XMTA if empty it defaults to GoDSN, and is used as MTA name in
+	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
 	XMTA string
 
 	// Message sender address, included as 'X-GoDSN-Sender: rfc822; ADDR' field.
@@ -85,14 +85,16 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 	}
 
 	if !info.ArrivalDate.IsZero() {
-		h.Add("Arrival-Date", info.ArrivalDate.Format("Mon, 2 Jan 2006 15:04:05 -0700"))
+		h.Add("Arrival-Date", info.ArrivalDate.Format(timeLayout))
 	}
 	if !info.ArrivalDate.IsZero() {
-		h.Add("Last-Attempt-Date", info.LastAttemptDate.Format("Mon, 2 Jan 2006 15:04:05 -0700"))
+		h.Add("Last-Attempt-Date", info.LastAttemptDate.Format(timeLayout))
 	}
 
 	return textproto.WriteHeader(w, h)
 }
+
+const timeLayout = "Mon, 2 Jan 2006 15:04:05 -0700"
 
 type Action string
 
@@ -107,8 +109,8 @@ const (
 type RecipientInfo struct {
 	FinalRecipient string
 	RemoteMTA      string
-	// XMTA if empty it defaults to GoDSN, and is used as MTA implemantation name in
-	// HeaderKey after X- (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
+	// XMTA if empty it defaults to GoDSN, and is used as MTA name in
+	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
 	XMTA string
 
 	Action Action
@@ -190,7 +192,7 @@ func GenerateDSN(utf8 bool, envelope Envelope, mtaInfo ReportingMTAInfo, rcptsIn
 	partWriter := textproto.NewMultipartWriter(outWriter)
 
 	reportHeader := textproto.Header{}
-	reportHeader.Add("Date", time.Now().Format("Mon, 2 Jan 2006 15:04:05 -0700"))
+	reportHeader.Add("Date", time.Now().Format(timeLayout))
 	reportHeader.Add("Message-Id", envelope.MsgID)
 	reportHeader.Add("Content-Transfer-Encoding", "8bit")
 	reportHeader.Add("Content-Type", "multipart/report; report-type=delivery-status; boundary="+partWriter.Boundary())
