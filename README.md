@@ -7,6 +7,5 @@ https://raw.githubusercontent.com/foxcpp/maddy/b8452b35756060d02ef86f030c41c9f0a
 
 A copy of the MIT License is included in this package.
 
-It implements RFC 3464 and RFC 3462, this package will stay standalone without
-dependecies to maddy (TODO).
+It implements RFC 3464 and RFC 3462, this package will stay standalone.
 
