@@ -13,8 +13,6 @@ import (
 
 	"github.com/emersion/go-message/textproto"
 	"github.com/emersion/go-smtp"
-	"github.com/foxcpp/maddy/framework/address"
-	"github.com/foxcpp/maddy/framework/dns"
 )
 
 type ReportingMTAInfo struct {
@@ -43,7 +41,7 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 		return errors.New("dsn: Reporting-MTA field is mandatory")
 	}
 
-	reportingMTA, err := dns.SelectIDNA(utf8, info.ReportingMTA)
+	reportingMTA, err := dnsSelectIDNA(utf8, info.ReportingMTA)
 	if err != nil {
 		return fmt.Errorf("dsn: cannot convert Reporting-MTA to a suitable representation: %w", err)
 	}
@@ -51,7 +49,7 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 	h.Add("Reporting-MTA", "dns; "+reportingMTA)
 
 	if info.ReceivedFromMTA != "" {
-		receivedFromMTA, err := dns.SelectIDNA(utf8, info.ReceivedFromMTA)
+		receivedFromMTA, err := dnsSelectIDNA(utf8, info.ReceivedFromMTA)
 		if err != nil {
 			return fmt.Errorf("dsn: cannot convert Received-From-MTA to a suitable representation: %w", err)
 		}
@@ -60,7 +58,7 @@ func (info ReportingMTAInfo) WriteTo(utf8 bool, w io.Writer) error {
 	}
 
 	if info.XSender != "" {
-		sender, err := address.SelectIDNA(utf8, info.XSender)
+		sender, err := addrSelectIDNA(utf8, info.XSender)
 		if err != nil {
 			return fmt.Errorf("dsn: cannot convert X-Maddy-Sender to a suitable representation: %w", err)
 		}
@@ -114,7 +112,7 @@ func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 	if info.FinalRecipient == "" {
 		return errors.New("dsn: Final-Recipient is required")
 	}
-	finalRcpt, err := address.SelectIDNA(utf8, info.FinalRecipient)
+	finalRcpt, err := addrSelectIDNA(utf8, info.FinalRecipient)
 	if err != nil {
 		return fmt.Errorf("dsn: cannot convert Final-Recipient to a suitable representation: %w", err)
 	}
@@ -150,7 +148,7 @@ func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 	}
 
 	if info.RemoteMTA != "" {
-		remoteMTA, err := dns.SelectIDNA(utf8, info.RemoteMTA)
+		remoteMTA, err := dnsSelectIDNA(utf8, info.RemoteMTA)
 		if err != nil {
 			return fmt.Errorf("dsn: cannot convert Remote-MTA to a suitable representation: %w", err)
 		}
