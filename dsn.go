@@ -109,15 +109,13 @@ const (
 type RecipientInfo struct {
 	FinalRecipient string
 	RemoteMTA      string
-	// XMTAName if empty it defaults to GoDSN, and is used as MTA name in
-	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
-	XMTAName string
 
 	Action Action
 	Status smtp.EnhancedCode
 
 	// DiagnosticCode is the error that will be returned to the sender.
 	DiagnosticCode error
+	xMTAName       string
 }
 
 var newLineReplacer = strings.NewReplacer("\n", " ", "\r", " ")
@@ -160,10 +158,10 @@ func (info RecipientInfo) WriteTo(utf8 bool, w io.Writer) error {
 		// ... I didn't bother implementing mangling logic to remove Unicode
 		// characters.
 		errorDesc := newLineReplacer.Replace(info.DiagnosticCode.Error())
-		if info.XMTAName == "" {
-			info.XMTAName = xMTADefaultName
+		if info.xMTAName == "" {
+			info.xMTAName = xMTADefaultName
 		}
-		xHeaderPrefix := "X-" + strings.TrimSpace(info.XMTAName)
+		xHeaderPrefix := "X-" + strings.TrimSpace(info.xMTAName)
 		h.Add("Diagnostic-Code", xHeaderPrefix+"; "+errorDesc)
 	}
 
@@ -248,6 +246,10 @@ func writeMachineReadablePart(utf8 bool, w *textproto.MultipartWriter, mtaInfo R
 	}
 
 	for _, rcpt := range rcptsInfo {
+		if mtaInfo.XMTAName == "" {
+			mtaInfo.XMTAName = xMTADefaultName
+		}
+		rcpt.xMTAName = mtaInfo.XMTAName
 		if err := rcpt.WriteTo(utf8, machineWriter); err != nil {
 			return err
 		}
