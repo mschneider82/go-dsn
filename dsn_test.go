@@ -73,6 +73,60 @@ func TestGenerateDSN(t *testing.T) {
 			if !strings.ContainsAny(outWriter.String(), tt.wantStringInOutWriter) {
 				t.Errorf("outWriter should contain %s, but got: %s", tt.wantStringInOutWriter, outWriter.String())
 			}
+
+		})
+	}
+}
+
+func TestSendDSN(t *testing.T) {
+	type args struct {
+		smtpaddr     string
+		utf8         bool
+		envelope     Envelope
+		mtaInfo      ReportingMTAInfo
+		rcptsInfo    []RecipientInfo
+		failedHeader textproto.Header
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "t",
+			args: args{
+				smtpaddr: "localhost:25",
+				utf8:     false,
+				envelope: Envelope{
+					MsgID: "<msgid1@example.com>",
+					From:  "from@example.com",
+					To:    "to@example.com",
+				},
+				mtaInfo: ReportingMTAInfo{
+					ReportingMTA:    "reportingmta.example.com",
+					ReceivedFromMTA: "receivedmta.example.com",
+					XSender:         "XSender@example.com",
+					XMessageID:      "XMessageID@example.com",
+					ArrivalDate:     time.Date(2020, 01, 02, 15, 04, 05, 06, time.UTC),
+					LastAttemptDate: time.Date(2020, 01, 02, 15, 04, 05, 07, time.UTC),
+				},
+				rcptsInfo: []RecipientInfo{{
+					FinalRecipient: "test@example.com",
+					RemoteMTA:      "remotemta.example.com",
+					Action:         ActionFailed,
+					Status:         smtp.EnhancedCode{5, 0, 0},
+					DiagnosticCode: nil,
+				}},
+				failedHeader: textproto.Header{},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := SendDSN(tt.args.smtpaddr, tt.args.utf8, tt.args.envelope, tt.args.mtaInfo, tt.args.rcptsInfo, tt.args.failedHeader); (err != nil) != tt.wantErr {
+				t.Errorf("SendDSN() error = %v, wantErr %v", err, tt.wantErr)
+			}
 		})
 	}
 }

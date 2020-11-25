@@ -4,6 +4,7 @@
 package dsn
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -13,22 +14,23 @@ import (
 
 	"github.com/emersion/go-message/textproto"
 	"github.com/emersion/go-smtp"
+	"github.com/mschneider82/go-smtp/smtpclient"
 )
 
-const xMTADefaultName = "GoDSN"
+const xMTADefaultName = "Godsn"
 
 type ReportingMTAInfo struct {
 	ReportingMTA    string
 	ReceivedFromMTA string
 
-	// XMTAName if empty it defaults to GoDSN, and is used as MTA name in
-	// the X-HeaderKey (e.g. X-GoDSN-Sender) - rfc3464 section 2.4
+	// XMTAName if empty it defaults to Godsn, and is used as MTA name in
+	// the X-HeaderKey (e.g. X-Godsn-Sender) - rfc3464 section 2.4
 	XMTAName string
 
-	// Message sender address, included as 'X-GoDSN-Sender: rfc822; ADDR' field.
+	// Message sender address, included as 'X-Godsn-Sender: rfc822; ADDR' field.
 	XSender string
 
-	// Message identifier, included as 'X-GoDSN-MsgId: MSGID' field.
+	// Message identifier, included as 'X-Godsn-MsgId: MSGID' field.
 	XMessageID string
 
 	// Time when message was enqueued for delivery by Reporting MTA.
@@ -209,6 +211,48 @@ func GenerateDSN(utf8 bool, envelope Envelope, mtaInfo ReportingMTAInfo, rcptsIn
 		return textproto.Header{}, err
 	}
 	return reportHeader, writeHeader(utf8, partWriter, failedHeader)
+}
+
+// SendDSN generates and sends DSN via an smtp relay
+// From Addr defaults to <>
+func SendDSN(smtpaddr string, utf8 bool, envelope Envelope, mtaInfo ReportingMTAInfo, rcptsInfo []RecipientInfo, failedHeader textproto.Header) error {
+	bodyBuf := bytes.Buffer{}
+	envelope.From = "MAILER-DAEMON (Mail Delivery System)"
+	hdr, err := GenerateDSN(utf8, envelope, mtaInfo, rcptsInfo, failedHeader, &bodyBuf)
+	if err != nil {
+		return err
+	}
+	c, err := smtpclient.Dial(smtpaddr)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if err := c.Hello("bla"); err != nil {
+		return err
+	}
+	if err := c.Mail("<>"); err != nil {
+		return err
+	}
+	for _, r := range rcptsInfo {
+		if err := c.Rcpt(r.FinalRecipient); err != nil {
+			return err
+		}
+	}
+	wr, err := c.Data()
+	if err != nil {
+		return err
+	}
+	err = textproto.WriteHeader(wr, hdr)
+	if err != nil {
+		wr.Close()
+		return err
+	}
+	_, err = bodyBuf.WriteTo(wr)
+	if err != nil {
+		wr.Close()
+		return err
+	}
+	return wr.Close()
 }
 
 func writeHeader(utf8 bool, w *textproto.MultipartWriter, header textproto.Header) error {
